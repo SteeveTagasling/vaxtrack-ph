@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'services/auth_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/scanner_screen.dart';
+import 'screens/admin_home_screen.dart';
 
 class VaxTrackApp extends StatelessWidget {
   const VaxTrackApp({super.key});
@@ -34,20 +35,56 @@ class VaxTrackApp extends StatelessWidget {
           ),
         ),
       ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasData) {
-            return const ScannerScreen();
-          }
-          return const LoginScreen();
-        },
-      ),
+      home: const _SessionRouter(),
     );
+  }
+}
+
+/// Checks for a saved session on startup and routes accordingly.
+class _SessionRouter extends StatefulWidget {
+  const _SessionRouter();
+
+  @override
+  State<_SessionRouter> createState() => _SessionRouterState();
+}
+
+class _SessionRouterState extends State<_SessionRouter> {
+  bool _isLoading = true;
+  String? _role;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    final role = await AuthService.restoreSession();
+    if (mounted) {
+      setState(() {
+        _role = role;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF4FBF8),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF1D9E75)),
+        ),
+      );
+    }
+
+    if (_role == 'admin') {
+      return const AdminHomeScreen();
+    }
+    if (_role != null) {
+      return const ScannerScreen();
+    }
+    return const LoginScreen();
   }
 }

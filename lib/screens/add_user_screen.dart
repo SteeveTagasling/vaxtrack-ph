@@ -13,12 +13,10 @@ class _AddUserScreenState extends State<AddUserScreen> {
   final _facilityController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _adminPasswordController = TextEditingController();
 
   String _selectedRole = 'healthcare_provider';
   bool _isLoading = false;
-  bool _obscureNewPassword = true;
-  bool _obscureAdminPassword = true;
+  bool _obscurePassword = true;
   String? _errorMessage;
   String? _successMessage;
 
@@ -31,8 +29,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
     if (_fullNameController.text.isEmpty ||
         _facilityController.text.isEmpty ||
         _emailController.text.isEmpty ||
-        _passwordController.text.isEmpty ||
-        _adminPasswordController.text.isEmpty) {
+        _passwordController.text.isEmpty) {
       setState(() => _errorMessage = 'Please fill in all fields.');
       return;
     }
@@ -48,11 +45,9 @@ class _AddUserScreenState extends State<AddUserScreen> {
     });
 
     try {
-      await AuthService.adminCreateUser(
-        adminEmail: AuthService.currentUser!.email!,
-        adminPassword: _adminPasswordController.text,
-        newEmail: _emailController.text,
-        newPassword: _passwordController.text,
+      await AuthService.createUser(
+        email: _emailController.text,
+        password: _passwordController.text,
         role: _selectedRole,
         fullName: _fullNameController.text,
         facility: _facilityController.text,
@@ -64,16 +59,9 @@ class _AddUserScreenState extends State<AddUserScreen> {
         _facilityController.clear();
         _emailController.clear();
         _passwordController.clear();
-        _adminPasswordController.clear();
       });
     } on Exception catch (e) {
       String msg = e.toString().replaceAll('Exception: ', '');
-      if (msg.contains('email-already-in-use'))
-        msg = 'This email is already registered.';
-      if (msg.contains('wrong-password') ||
-          msg.contains('invalid-credential')) {
-        msg = 'Incorrect admin password.';
-      }
       setState(() => _errorMessage = msg);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -86,7 +74,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
     _facilityController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _adminPasswordController.dispose();
     super.dispose();
   }
 
@@ -176,50 +163,9 @@ class _AddUserScreenState extends State<AddUserScreen> {
             const SizedBox(height: 12),
             _buildField(_passwordController, 'Set Password (min 6 characters)',
                 Icons.lock_outline,
-                obscure: _obscureNewPassword,
+                obscure: _obscurePassword,
                 toggleObscure: () =>
-                    setState(() => _obscureNewPassword = !_obscureNewPassword)),
-            const SizedBox(height: 24),
-
-            // Admin confirmation
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFAEEDA),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFEF9F27)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.security, color: Color(0xFF854F0B), size: 16),
-                      SizedBox(width: 6),
-                      Text('Admin Confirmation',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF633806))),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                      'Enter your admin password to authorize this action.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF854F0B))),
-                  const SizedBox(height: 10),
-                  _buildField(
-                    _adminPasswordController,
-                    'Your Admin Password',
-                    Icons.admin_panel_settings,
-                    obscure: _obscureAdminPassword,
-                    toggleObscure: () => setState(
-                        () => _obscureAdminPassword = !_obscureAdminPassword),
-                    fillColor: Colors.white,
-                  ),
-                ],
-              ),
-            ),
+                    setState(() => _obscurePassword = !_obscurePassword)),
 
             if (_errorMessage != null) ...[
               const SizedBox(height: 14),
@@ -259,7 +205,6 @@ class _AddUserScreenState extends State<AddUserScreen> {
     bool obscure = false,
     VoidCallback? toggleObscure,
     TextInputType? keyboardType,
-    Color fillColor = Colors.white,
   }) {
     return TextField(
       controller: controller,
@@ -269,7 +214,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
         labelText: label,
         prefixIcon: Icon(icon, color: const Color(0xFF1D9E75)),
         filled: true,
-        fillColor: fillColor,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: Color(0xFFD3D1C7))),

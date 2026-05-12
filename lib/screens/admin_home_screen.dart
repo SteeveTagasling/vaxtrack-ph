@@ -3,13 +3,14 @@ import '../services/auth_service.dart';
 import 'add_user_screen.dart';
 import 'user_list_screen.dart';
 import 'analytics_screen.dart';
+import 'login_screen.dart';
 
 class AdminHomeScreen extends StatelessWidget {
   const AdminHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final email = AuthService.currentUser?.email ?? '';
+    final email = AuthService.currentEmail ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4FBF8),
@@ -19,7 +20,15 @@ class AdminHomeScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign Out',
-            onPressed: () => AuthService.logout(),
+            onPressed: () async {
+              await AuthService.logout();
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              }
+            },
           ),
         ],
       ),

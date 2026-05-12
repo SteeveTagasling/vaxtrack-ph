@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import 'admin_home_screen.dart';
+import 'scanner_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,13 +17,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
-  String _selectedRole = 'Healthcare Provider';
-  final List<String> _roles = [
-    'Healthcare Provider',
-    'Pharmacy',
-    'Admin',
-  ];
-
   Future<void> _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       setState(() => _errorMessage = 'Please fill in all fields.');
@@ -34,8 +29,25 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await AuthService.login(_emailController.text, _passwordController.text);
-      // Navigation handled by StreamBuilder in app.dart
+      final role = await AuthService.login(
+        _emailController.text,
+        _passwordController.text,
+      );
+
+      if (!mounted) return;
+
+      // Navigate based on the role stored in the account
+      if (role == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const ScannerScreen()),
+        );
+      }
     } on Exception catch (e) {
       setState(() => _errorMessage = _friendlyError(e.toString()));
     } finally {
@@ -44,13 +56,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _friendlyError(String error) {
-    if (error.contains('user-not-found'))
+    if (error.contains('user-disabled')) {
+      return 'This account has been deactivated. Contact your admin.';
+    }
+    if (error.contains('user-not-found')) {
       return 'No account found with this email.';
-    if (error.contains('wrong-password')) return 'Incorrect password.';
+    }
+    if (error.contains('wrong-password') ||
+        error.contains('invalid-credential')) {
+      return 'Incorrect password.';
+    }
     if (error.contains('invalid-email')) return 'Invalid email address.';
-    if (error.contains('too-many-requests'))
+    if (error.contains('too-many-requests')) {
       return 'Too many attempts. Try again later.';
-    return 'Login failed. Please try again.';
+    }
+    return 'Login failed: $error';
   }
 
   @override
@@ -116,21 +136,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Access your healthcare provider account',
+                'Enter your credentials to continue',
                 style: TextStyle(fontSize: 13, color: Color(0xFF888780)),
               ),
               const SizedBox(height: 24),
-
-              // Role selector
-              DropdownButtonFormField<String>(
-                value: _selectedRole,
-                decoration: _inputDecoration('Role', Icons.badge_outlined),
-                items: _roles
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedRole = v!),
-              ),
-              const SizedBox(height: 16),
 
               // Email
               TextField(
