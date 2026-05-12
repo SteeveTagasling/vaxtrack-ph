@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'add_user_screen.dart';
 import 'user_list_screen.dart';
-import 'analytics_screen.dart';
+import 'patient_records_screen.dart';
 import 'login_screen.dart';
 
 class AdminHomeScreen extends StatelessWidget {
@@ -79,7 +79,6 @@ class AdminHomeScreen extends StatelessWidget {
                     color: Color(0xFF085041))),
             const SizedBox(height: 12),
 
-            // Add user card
             _menuCard(
               context,
               icon: Icons.person_add_alt_1,
@@ -93,7 +92,6 @@ class AdminHomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // View users card
             _menuCard(
               context,
               icon: Icons.people,
@@ -107,7 +105,7 @@ class AdminHomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 28),
 
-            const Text('Reports',
+            const Text('Records',
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -116,13 +114,13 @@ class AdminHomeScreen extends StatelessWidget {
 
             _menuCard(
               context,
-              icon: Icons.bar_chart,
-              title: 'Analytics Report',
-              subtitle: 'View scan logs and generate reports for DOH',
+              icon: Icons.folder_shared,
+              title: 'Patient Records',
+              subtitle: 'View all registered patient vaccination records',
               color: const Color(0xFF534AB7),
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
+                MaterialPageRoute(builder: (_) => const PatientRecordsScreen()),
               ),
             ),
           ],

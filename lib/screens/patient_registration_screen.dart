@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import 'qr_display_screen.dart';
 
@@ -37,8 +38,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   bool _isLoading = false;
 
   Future<void> _pickDate({required bool isNextDose}) async {
-    final initialDate =
-        isNextDose ? (_nextDoseDate ?? DateTime.now().add(const Duration(days: 28))) : _vaccinationDate;
+    final initialDate = isNextDose
+        ? (_nextDoseDate ?? DateTime.now().add(const Duration(days: 28)))
+        : _vaccinationDate;
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -66,10 +68,15 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     }
   }
 
-  void _generateQR() {
+  Future<void> _generateQR() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+
+    final registeredAt = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+    final nextDose = _nextDoseDate != null
+        ? DateFormat('yyyy-MM-dd').format(_nextDoseDate!)
+        : null;
 
     final data = {
       'type': 'vaxtrack_ph',
@@ -79,15 +86,21 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       'contact': _contactController.text.trim(),
       'vaccine': _selectedVaccine,
       'vaccinationDate': DateFormat('yyyy-MM-dd').format(_vaccinationDate),
-      'nextDoseDate': _nextDoseDate != null
-          ? DateFormat('yyyy-MM-dd').format(_nextDoseDate!)
-          : null,
+      'nextDoseDate': nextDose,
       'registeredBy': AuthService.currentEmail ?? '',
-      'registeredAt': DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+      'registeredAt': registeredAt,
     };
+
+    // Save record to Firestore patient_records collection
+    try {
+      await FirebaseFirestore.instance.collection('patient_records').add(data);
+    } catch (_) {
+      // Continue even if save fails — QR is still generated
+    }
 
     final qrData = jsonEncode(data);
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     Navigator.push(
@@ -145,8 +158,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15)),
                           SizedBox(height: 2),
-                          Text(
-                              'Fill in patient details and generate a QR code',
+                          Text('Fill in patient details and generate a QR code',
                               style: TextStyle(
                                   color: Colors.white70, fontSize: 12)),
                         ],
@@ -201,8 +213,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                 label: 'Contact Number',
                 icon: Icons.phone_outlined,
                 keyboardType: TextInputType.phone,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Please enter contact number' : null,
+                validator: (v) => v == null || v.isEmpty
+                    ? 'Please enter contact number'
+                    : null,
               ),
               const SizedBox(height: 24),
 
@@ -214,13 +227,12 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                       color: Color(0xFF085041))),
               const SizedBox(height: 12),
 
-              // Vaccine dropdown
               DropdownButtonFormField<String>(
                 value: _selectedVaccine,
                 decoration: InputDecoration(
                   labelText: 'Vaccine',
-                  prefixIcon: const Icon(Icons.vaccines,
-                      color: Color(0xFF1D9E75)),
+                  prefixIcon:
+                      const Icon(Icons.vaccines, color: Color(0xFF1D9E75)),
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
@@ -244,7 +256,6 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Vaccination date
               _buildDateField(
                 label: 'Vaccination Date',
                 date: _vaccinationDate,
@@ -253,7 +264,6 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Next dose date (optional)
               _buildDateField(
                 label: 'Next Dose Date (Optional)',
                 date: _nextDoseDate,
@@ -277,7 +287,6 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
               const SizedBox(height: 28),
 
-              // Generate QR button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

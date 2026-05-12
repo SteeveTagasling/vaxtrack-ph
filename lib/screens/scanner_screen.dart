@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import '../services/firebase_service.dart';
 import '../services/auth_service.dart';
@@ -28,8 +29,59 @@ class _ScannerScreenState extends State<ScannerScreen> {
     setState(() => _isProcessing = true);
     _scannerController.stop();
 
-    final rawData = barcode!.rawValue!;
+    await _processQrValue(barcode!.rawValue!);
+  }
 
+  Future<void> _uploadAndScanQr() async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile == null) return;
+
+      setState(() => _isProcessing = true);
+      _scannerController.stop();
+
+      // Use MobileScanner to analyze the picked image
+      final result =
+          await MobileScannerController().analyzeImage(pickedFile.path);
+
+      if (result == null ||
+          result.barcodes.isEmpty ||
+          result.barcodes.first.rawValue == null) {
+        if (!mounted) return;
+        setState(() => _isProcessing = false);
+        _scannerController.start();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                    child: Text('No QR code found in the selected image.')),
+              ],
+            ),
+            backgroundColor: Color(0xFFA32D2D),
+          ),
+        );
+        return;
+      }
+
+      await _processQrValue(result.barcodes.first.rawValue!);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      _scannerController.start();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to read image: $e'),
+          backgroundColor: const Color(0xFFA32D2D),
+        ),
+      );
+    }
+  }
+
+  Future<void> _processQrValue(String rawData) async {
     // Check if this is a VaxTrack PH QR code (JSON with type field)
     try {
       final decoded = jsonDecode(rawData) as Map<String, dynamic>;
@@ -107,7 +159,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Status badge
               Container(
                 width: double.infinity,
                 padding:
@@ -134,20 +185,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
               _infoRow(Icons.person, 'Name', data['name'] ?? 'N/A'),
               _infoRow(Icons.cake, 'Age', '${data['age'] ?? 'N/A'}'),
-              _infoRow(
-                  Icons.location_on, 'Address', data['address'] ?? 'N/A'),
+              _infoRow(Icons.location_on, 'Address', data['address'] ?? 'N/A'),
               _infoRow(Icons.phone, 'Contact', data['contact'] ?? 'N/A'),
               const Divider(height: 20),
-              _infoRow(
-                  Icons.vaccines, 'Vaccine', data['vaccine'] ?? 'N/A'),
+              _infoRow(Icons.vaccines, 'Vaccine', data['vaccine'] ?? 'N/A'),
               _infoRow(Icons.calendar_today, 'Vaccinated',
                   data['vaccinationDate'] ?? 'N/A'),
               if (data['nextDoseDate'] != null)
-                _infoRow(Icons.event_repeat, 'Next Dose',
-                    data['nextDoseDate']),
+                _infoRow(Icons.event_repeat, 'Next Dose', data['nextDoseDate']),
               const Divider(height: 20),
               _infoRow(Icons.medical_services, 'Registered By',
                   data['registeredBy'] ?? 'N/A'),
@@ -187,8 +234,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
           Expanded(
             child: Text(value,
-                style:
-                    const TextStyle(fontSize: 13, color: Color(0xFF2C2C2A))),
+                style: const TextStyle(fontSize: 13, color: Color(0xFF2C2C2A))),
           ),
         ],
       ),
@@ -264,9 +310,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
           children: [
             Icon(
               isExpired ? Icons.cancel : Icons.schedule,
-              color: isExpired
-                  ? const Color(0xFFA32D2D)
-                  : const Color(0xFFBA7517),
+              color:
+                  isExpired ? const Color(0xFFA32D2D) : const Color(0xFFBA7517),
               size: 28,
             ),
             const SizedBox(width: 8),
@@ -352,6 +397,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
       appBar: AppBar(
         title: const Text('VaxTrack PH — Scan'),
         actions: [
+          // Upload QR Code from gallery
+          IconButton(
+            icon: const Icon(Icons.upload_file),
+            tooltip: 'Upload QR Code',
+            onPressed: _isProcessing ? null : _uploadAndScanQr,
+          ),
           IconButton(
             icon: Icon(_torchOn ? Icons.flash_on : Icons.flash_off),
             onPressed: () {
@@ -374,7 +425,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
         ],
       ),
-      // FAB to register patient
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -412,8 +462,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             left: 0,
             right: 0,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
               color: Colors.black87,
               child: Column(
                 children: [
@@ -424,6 +473,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     'Point camera at vaccine QR code or barcode',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 6),
+                  // Upload QR hint
+                  GestureDetector(
+                    onTap: _isProcessing ? null : _uploadAndScanQr,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.photo_library,
+                              color: Color(0xFF5DCAA5), size: 16),
+                          SizedBox(width: 6),
+                          Text('Upload QR from Gallery',
+                              style: TextStyle(
+                                  color: Color(0xFF5DCAA5), fontSize: 12)),
+                        ],
+                      ),
+                    ),
                   ),
                   if (_isProcessing) ...[
                     const SizedBox(height: 12),
@@ -441,8 +515,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         SizedBox(width: 8),
                         Text(
                           'Reading QR code...',
-                          style: TextStyle(
-                              color: Color(0xFF5DCAA5), fontSize: 13),
+                          style:
+                              TextStyle(color: Color(0xFF5DCAA5), fontSize: 13),
                         ),
                       ],
                     ),
@@ -450,8 +524,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'Signed in as: ${AuthService.currentEmail ?? ""}',
-                    style:
-                        const TextStyle(color: Colors.white38, fontSize: 11),
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ],
               ),

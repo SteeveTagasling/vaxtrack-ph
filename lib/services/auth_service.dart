@@ -1,9 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ── Admin credentials (only admin uses Firebase Auth) ───────────
   static const String adminEmail = 'admin@vaxtrack.ph';
@@ -11,7 +13,6 @@ class AuthService {
   // ── Current session ─────────────────────────────────────────────
   static Map<String, dynamic>? _currentSession;
 
-  /// Check if someone is logged in (admin or local user).
   static bool get isLoggedIn => _currentSession != null;
   static bool get isAdmin => _currentSession?['role'] == 'admin';
   static String? get currentEmail => _currentSession?['email'];
@@ -20,7 +21,6 @@ class AuthService {
 
   // ── Login ───────────────────────────────────────────────────────
 
-  /// Login — admin uses Firebase Auth, others use local storage.
   static Future<String?> login(String email, String password) async {
     final trimmedEmail = email.trim().toLowerCase();
     final trimmedPassword = password.trim();
@@ -40,39 +40,37 @@ class AuthService {
       return 'admin';
     }
 
-    // Non-admin: check local storage
-    final users = await getAllUsers();
-    Map<String, dynamic>? matchedUser;
-    try {
-      matchedUser = users.firstWhere(
-        (u) => (u['email'] as String).toLowerCase() == trimmedEmail,
-      );
-    } catch (_) {
+    // Non-admin: check Firestore users collection
+    final snapshot = await _db
+        .collection('users')
+        .where('email', isEqualTo: trimmedEmail)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
       throw Exception('user-not-found');
     }
 
-    // Check password
-    if (matchedUser['password'] != trimmedPassword) {
+    final userData = snapshot.docs.first.data();
+
+    if (userData['password'] != trimmedPassword) {
       throw Exception('wrong-password');
     }
 
-    // Check if active
-    if (matchedUser['isActive'] == false) {
+    if (userData['isActive'] == false) {
       throw Exception('user-disabled');
     }
 
-    // Set session with the STORED role (not user-selectable)
     _currentSession = {
-      'email': matchedUser['email'],
-      'role': matchedUser['role'],
-      'fullName': matchedUser['fullName'],
-      'facility': matchedUser['facility'],
+      'email': userData['email'],
+      'role': userData['role'],
+      'fullName': userData['fullName'],
+      'facility': userData['facility'],
     };
     await _saveSession();
-    return matchedUser['role'] as String;
+    return userData['role'] as String;
   }
 
-  /// Logout — clear session and sign out of Firebase Auth.
   static Future<void> logout() async {
     _currentSession = null;
     try {
@@ -82,7 +80,6 @@ class AuthService {
     await prefs.remove('vaxtrack_session');
   }
 
-  /// Restore session on app startup (returns role or null).
   static Future<String?> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
     final sessionJson = prefs.getString('vaxtrack_session');
@@ -97,34 +94,29 @@ class AuthService {
     }
   }
 
-  /// Save current session to SharedPreferences.
   static Future<void> _saveSession() async {
     if (_currentSession == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('vaxtrack_session', jsonEncode(_currentSession));
   }
 
-  // ── User management (local storage) ─────────────────────────────
+  // ── User management (Firestore) ──────────────────────────────────
 
-  static const String _usersKey = 'vaxtrack_users';
-
-  /// Get all stored user accounts.
+  /// Get all user accounts from Firestore.
   static Future<List<Map<String, dynamic>>> getAllUsers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final usersJson = prefs.getString(_usersKey);
-    if (usersJson == null) return [];
+    final snapshot = await _db
+        .collection('users')
+        .orderBy('createdAt', descending: true)
+        .get();
 
-    final List<dynamic> list = jsonDecode(usersJson);
-    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id;
+      return data;
+    }).toList();
   }
 
-  /// Save the users list.
-  static Future<void> _saveUsers(List<Map<String, dynamic>> users) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_usersKey, jsonEncode(users));
-  }
-
-  /// Admin creates a new user account (LOCAL ONLY — no Firebase Auth).
+  /// Admin creates a new user account — saved to Firestore.
   static Future<void> createUser({
     required String email,
     required String password,
@@ -132,50 +124,38 @@ class AuthService {
     required String fullName,
     required String facility,
   }) async {
-    final users = await getAllUsers();
+    final trimmedEmail = email.trim().toLowerCase();
 
-    // Check if email already exists
-    final exists = users.any(
-      (u) => (u['email'] as String).toLowerCase() == email.trim().toLowerCase(),
-    );
-    if (exists) {
+    // Check if email already exists in Firestore
+    final existing = await _db
+        .collection('users')
+        .where('email', isEqualTo: trimmedEmail)
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
       throw Exception('This email is already registered.');
     }
 
-    // Generate a simple unique ID
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-
-    users.add({
-      'id': id,
-      'email': email.trim().toLowerCase(),
+    // Save to Firestore — document ID is auto-generated
+    await _db.collection('users').add({
+      'email': trimmedEmail,
       'password': password.trim(),
       'fullName': fullName.trim(),
       'facility': facility.trim(),
       'role': role,
       'isActive': true,
-      'createdAt': DateTime.now().toIso8601String(),
+      'createdAt': FieldValue.serverTimestamp(),
     });
-
-    await _saveUsers(users);
   }
 
-  /// Deactivate a user account.
+  /// Deactivate a user account in Firestore.
   static Future<void> deactivateUser(String userId) async {
-    final users = await getAllUsers();
-    final index = users.indexWhere((u) => u['id'] == userId);
-    if (index != -1) {
-      users[index]['isActive'] = false;
-      await _saveUsers(users);
-    }
+    await _db.collection('users').doc(userId).update({'isActive': false});
   }
 
-  /// Reactivate a user account.
+  /// Reactivate a user account in Firestore.
   static Future<void> reactivateUser(String userId) async {
-    final users = await getAllUsers();
-    final index = users.indexWhere((u) => u['id'] == userId);
-    if (index != -1) {
-      users[index]['isActive'] = true;
-      await _saveUsers(users);
-    }
+    await _db.collection('users').doc(userId).update({'isActive': true});
   }
 }
